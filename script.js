@@ -1473,3 +1473,269 @@ renderEverything();
 
 openScreen("home");
 window.toggleFavorite = toggleFavorite;
+/* ======================================================
+   STYLE ANALYSIS — STYLE SYNTH AI
+   Add at the VERY END of script.js
+====================================================== */
+
+(function addStyleAnalysis() {
+    const nav = document.querySelector(".sidebar nav");
+    const main = document.querySelector(".main");
+
+    if (!nav || !main || document.getElementById("style-analysis")) {
+        return;
+    }
+
+    // Add navigation button
+    const navButton = document.createElement("button");
+    navButton.className = "nav-btn";
+    navButton.dataset.screen = "style-analysis";
+    navButton.innerHTML = "<span>✧</span> Style Analysis";
+
+    const profileButton = nav.querySelector('[data-screen="profile"]');
+    if (profileButton) {
+        nav.insertBefore(navButton, profileButton);
+    } else {
+        nav.appendChild(navButton);
+    }
+
+    // Add analysis screen
+    const section = document.createElement("section");
+    section.id = "style-analysis";
+    section.className = "screen";
+
+    section.innerHTML = `
+        <div class="page-title">
+            <div>
+                <small class="eyebrow">YOUR PERSONAL STYLE REPORT</small>
+                <h1>Style Analysis</h1>
+                <p>Discover patterns and possibilities in your wardrobe.</p>
+            </div>
+            <button id="refreshStyleAnalysis" class="primary">
+                ↻ Refresh Analysis
+            </button>
+        </div>
+
+        <div id="styleAnalysisContent"></div>
+    `;
+
+    main.appendChild(section);
+
+    // Add styles without changing the existing stylesheet
+    const style = document.createElement("style");
+    style.textContent = `
+        .analysis-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .analysis-card {
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 22px;
+            box-shadow: var(--shadow);
+            min-width: 0;
+        }
+        .analysis-card h3 {
+            margin: 10px 0;
+            overflow-wrap: anywhere;
+        }
+        .analysis-card p {
+            color: var(--muted);
+            line-height: 1.6;
+            font-size: 13px;
+        }
+        .analysis-number {
+            color: var(--blue-dark);
+            font-size: 30px;
+            font-weight: 700;
+        }
+        .analysis-section {
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+        .analysis-section h2 {
+            font-family: "Playfair Display", serif;
+            margin-bottom: 14px;
+        }
+        .analysis-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .analysis-row:last-child { border-bottom: 0; }
+        .analysis-row span:last-child {
+            color: var(--blue-dark);
+            font-weight: 600;
+            text-align: right;
+        }
+        .analysis-tip {
+            background: var(--blue-light);
+            border-radius: 14px;
+            padding: 15px;
+            margin-top: 12px;
+            line-height: 1.6;
+        }
+        @media(max-width: 800px) {
+            .analysis-grid { grid-template-columns: 1fr; }
+        }
+    `;
+    document.head.appendChild(style);
+
+    function analyzeStyle() {
+        const content = document.getElementById("styleAnalysisContent");
+        if (!content) return;
+
+        const items = Array.isArray(wardrobe) ? wardrobe : [];
+        const shirts = items.filter(i => i.category === "shirt");
+        const pants = items.filter(i => i.category === "pant");
+        const accessories = items.filter(i => i.category === "accessory");
+        const favorites = items.filter(i => i.favorite === true);
+
+        const colorCounts = {};
+        const occasionCounts = {};
+
+        items.forEach(item => {
+            const color = String(item.color || "Unspecified").trim();
+            const occasion = String(item.occasion || "Unspecified").trim();
+
+            colorCounts[color] = (colorCounts[color] || 0) + 1;
+            occasionCounts[occasion] = (occasionCounts[occasion] || 0) + 1;
+        });
+
+        const topColor = Object.entries(colorCounts)
+            .sort((a, b) => b[1] - a[1])[0];
+
+        const topOccasion = Object.entries(occasionCounts)
+            .sort((a, b) => b[1] - a[1])[0];
+
+        const combinations = [];
+
+        shirts.forEach(shirt => {
+            pants.forEach(pant => {
+                combinations.push({
+                    shirt,
+                    pant,
+                    score: colourScore(shirt.color, pant.color)
+                });
+            });
+        });
+
+        combinations.sort((a, b) => b.score - a.score);
+
+        const best = combinations[0];
+
+        const tips = [];
+
+        if (items.length === 0) {
+            tips.push("Add your first clothing item to begin your personal style analysis.");
+        } else {
+            if (shirts.length === 0) {
+                tips.push("Add some shirts or tops to start creating complete outfits.");
+            }
+            if (pants.length === 0) {
+                tips.push("Add pants to unlock shirt-and-pants outfit combinations.");
+            }
+            if (shirts.length > 0 && pants.length > 0) {
+                tips.push("Your wardrobe contains " + combinations.length +
+                    " possible shirt-and-pants combinations.");
+            }
+            if (accessories.length === 0) {
+                tips.push("Consider adding accessories to explore more styling options.");
+            }
+            if (favorites.length > 0) {
+                tips.push("You have saved " + favorites.length +
+                    " favorite items. Use them as inspiration for future outfits.");
+            } else {
+                tips.push("Favorite the clothing pieces you enjoy wearing to build a personal shortlist.");
+            }
+            if (topColor) {
+                tips.push("Your most common recorded colour is " + topColor[0] +
+                    ". Try pairing it with a complementary neutral.");
+            }
+        }
+
+        const safe = value => escapeHTML(value);
+
+        content.innerHTML = `
+            <div class="analysis-grid">
+                <div class="analysis-card">
+                    <small class="eyebrow">TOTAL COLLECTION</small>
+                    <div class="analysis-number">${items.length}</div>
+                    <p>Clothing items recorded</p>
+                </div>
+                <div class="analysis-card">
+                    <small class="eyebrow">OUTFIT OPTIONS</small>
+                    <div class="analysis-number">${combinations.length}</div>
+                    <p>Possible shirt-and-pants combinations</p>
+                </div>
+                <div class="analysis-card">
+                    <small class="eyebrow">FAVORITES</small>
+                    <div class="analysis-number">${favorites.length}</div>
+                    <p>Items saved as favorites</p>
+                </div>
+            </div>
+
+            <div class="analysis-section">
+                <h2>Wardrobe Breakdown</h2>
+                <div class="analysis-row"><span>Shirts / Tops</span><span>${shirts.length}</span></div>
+                <div class="analysis-row"><span>Pants / Bottoms</span><span>${pants.length}</span></div>
+                <div class="analysis-row"><span>Accessories</span><span>${accessories.length}</span></div>
+                <div class="analysis-row"><span>Most recorded colour</span><span>${topColor ? safe(topColor[0]) + " (" + topColor[1] + ")" : "Not available yet"}</span></div>
+                <div class="analysis-row"><span>Most recorded occasion</span><span>${topOccasion ? safe(topOccasion[0]) + " (" + topOccasion[1] + ")" : "Not available yet"}</span></div>
+            </div>
+
+            <div class="analysis-section">
+                <h2>Colour Compatibility</h2>
+                ${
+                    best
+                    ? `<div class="analysis-tip">
+                        <strong>Suggested combination</strong><br>
+                        ${safe(best.shirt.name)} (${safe(best.shirt.color)})
+                        + ${safe(best.pant.name)} (${safe(best.pant.color)})<br>
+                        <span>Colour compatibility score: ${best.score}/100</span>
+                    </div>
+                    <p style="margin-top:12px">
+                        This score is based on the app's built-in colour matching rules,
+                        not a professional or AI-powered fashion assessment.
+                    </p>`
+                    : `<p>Add at least one shirt and one pair of pants to see a colour combination suggestion.</p>`
+                }
+            </div>
+
+            <div class="analysis-section">
+                <h2>Personal Style Insights</h2>
+                ${tips.map(tip => `<div class="analysis-tip">${safe(tip)}</div>`).join("")}
+            </div>
+        `;
+    }
+
+    // Navigation for the dynamically added screen
+    navButton.addEventListener("click", () => {
+        openScreen("style-analysis");
+        analyzeStyle();
+    });
+
+    document.getElementById("refreshStyleAnalysis")
+        .addEventListener("click", () => {
+            analyzeStyle();
+            toast("Style analysis refreshed ✨");
+        });
+
+    // Keep the report synchronized when wardrobe data changes
+    const originalRenderEverything = renderEverything;
+
+    renderEverything = function() {
+        originalRenderEverything();
+        analyzeStyle();
+    };
+
+    analyzeStyle();
+})();
