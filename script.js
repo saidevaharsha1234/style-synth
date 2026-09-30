@@ -1,1741 +1,507 @@
-// ======================================================
-// STYLE SYNTH AI
-// COMPLETE WARDROBE ENGINE
-// ======================================================
+/* =========================================
+   REAL AI STYLE ANALYSIS
+   ADD THIS AT THE VERY END OF SCRIPT.JS
+========================================= */
 
-const STORAGE_KEY = "styleSynthFinalWardrobe";
+window.analyzeStyle = async function () {
 
-let wardrobe = [];
+  const input = document.getElementById("bodyPhoto");
+  const preview = document.getElementById("bodyPreview");
+  const profile = document.getElementById("styleProfile");
 
-let selectedCategory = "shirt";
-let selectedOccasion = "College";
-let selectedFilter = "all";
-let selectedImage = "";
+  if (!input || !input.files || !input.files[0]) {
 
-let lastOutfit = null;
+    showToast("Please upload a full-body photo first.");
 
+    return;
+  }
 
-// ======================================================
-// LOAD DATA
-// ======================================================
+  const file = input.files[0];
 
-try {
-    wardrobe = JSON.parse(
-        localStorage.getItem(STORAGE_KEY)
-    ) || [];
-} catch {
-    wardrobe = [];
-}
+  /*
+    Basic image validation
+  */
 
+  if (!file.type.startsWith("image/")) {
 
-// ======================================================
-// HELPERS
-// ======================================================
+    showToast("Please choose an image file.");
 
-function $(selector) {
-    return document.querySelector(selector);
-}
+    return;
+  }
 
-function $$(selector) {
-    return document.querySelectorAll(selector);
-}
+  /*
+    Keep uploads reasonably sized.
+    This also makes the analysis faster.
+  */
 
-function saveData() {
-    localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify(wardrobe)
-    );
-}
+  if (file.size > 10 * 1024 * 1024) {
 
-function escapeHTML(value) {
-    return String(value || "")
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
-}
+    showToast("Please choose an image smaller than 10 MB.");
 
-function toast(message) {
-
-    const box = $("#toast");
-
-    if (!box) return;
-
-    box.textContent = message;
-    box.classList.add("show");
-
-    setTimeout(() => {
-        box.classList.remove("show");
-    }, 2200);
-}
+    return;
+  }
 
 
-// ======================================================
-// SCREEN NAVIGATION
-// ======================================================
+  /*
+    Show loading state inside the EXISTING
+    style profile area.
+  */
 
-function openScreen(screenName) {
+  profile.innerHTML = `
 
-    $$(".screen").forEach(screen => {
-        screen.classList.remove("active");
+    <div class="profile-placeholder">
+
+      <div class="profile-symbol">✦</div>
+
+      <h3>Style Synth is analyzing...</h3>
+
+      <p>
+        Examining visible styling details,
+        outfit coordination, colors and
+        hairstyle possibilities.
+      </p>
+
+      <div style="
+        margin-top:20px;
+        width:100%;
+        height:3px;
+        background:rgba(199,163,90,0.12);
+        border-radius:20px;
+        overflow:hidden;
+      ">
+
+        <div style="
+          width:45%;
+          height:100%;
+          background:#c7a35a;
+          animation:styleSynthLoading 1.5s infinite;
+        "></div>
+
+      </div>
+
+    </div>
+
+  `;
+
+
+  try {
+
+    /*
+      Convert image into Base64.
+    */
+
+    const imageData = await fileToDataURL(file);
+
+
+    /*
+      IMPORTANT:
+      This URL must point to YOUR backend.
+
+      Example:
+
+      https://your-style-synth-api.onrender.com/api/analyze-style
+
+      Do NOT put your OpenAI API key here.
+    */
+
+    const API_URL =
+      "https://YOUR-BACKEND-URL.com/api/analyze-style";
+
+
+    const response = await fetch(API_URL, {
+
+      method: "POST",
+
+      headers: {
+        "Content-Type": "application/json"
+      },
+
+      body: JSON.stringify({
+
+        image: imageData
+
+      })
+
     });
 
-    const screen = $("#" + screenName);
 
-    if (screen) {
-        screen.classList.add("active");
+    const data = await response.json();
+
+
+    if (!response.ok) {
+
+      throw new Error(
+        data.error ||
+        "The AI analysis failed."
+      );
+
     }
 
 
-    $$(".nav-btn").forEach(button => {
-        button.classList.toggle(
-            "active",
-            button.dataset.screen === screenName
-        );
-    });
+    if (!data.analysis) {
 
+      throw new Error(
+        "The AI returned an empty analysis."
+      );
 
-    const titles = {
-        home: "Style your way.",
-        wardrobe: "My wardrobe.",
-        add: "Add clothing.",
-        stylist: "AI Stylist.",
-        result: "Your outfit.",
-        favorites: "Favorites.",
-        profile: "Your profile."
-    };
-
-    $("#topTitle").textContent =
-        titles[screenName] || "Style Synth.";
-}
-
-
-// Every navigation button
-$$("[data-screen]").forEach(button => {
-
-    button.addEventListener("click", () => {
-
-        openScreen(button.dataset.screen);
-
-    });
-
-});
-
-
-// ======================================================
-// ADD CLOTHING SCREEN
-// ======================================================
-
-$("#openAddBtn").addEventListener(
-    "click",
-    () => openScreen("add")
-);
-
-
-// ======================================================
-// PHOTO UPLOAD
-// ======================================================
-
-const photoInput = $("#photoInput");
-const previewArea = $("#previewArea");
-
-$("#choosePhotoBtn").addEventListener(
-    "click",
-    () => photoInput.click()
-);
-
-
-photoInput.addEventListener(
-    "change",
-    event => {
-
-        const file =
-            event.target.files[0];
-
-        if (!file) return;
-
-        const reader =
-            new FileReader();
-
-        reader.onload = function(e) {
-
-            selectedImage = e.target.result;
-
-            previewArea.innerHTML = `
-                <div style="width:100%;text-align:center;">
-                    <img
-                        src="${selectedImage}"
-                        alt="Clothing preview"
-                    >
-
-                    <br>
-
-                    <button
-                        id="changePhotoBtn"
-                        class="secondary"
-                        type="button"
-                        style="margin-top:15px;"
-                    >
-                        Change Photo
-                    </button>
-                </div>
-            `;
-
-            $("#changePhotoBtn")
-                .addEventListener(
-                    "click",
-                    () => photoInput.click()
-                );
-
-        };
-
-        reader.readAsDataURL(file);
     }
-);
 
 
-// ======================================================
-// CATEGORY SELECTION
-// ======================================================
+    /*
+      Display AI results in the EXISTING
+      Style Profile section.
+    */
 
-$$(".category-btn").forEach(button => {
+    renderAIStyleProfile(data.analysis);
 
-    button.addEventListener(
-        "click",
-        () => {
 
-            selectedCategory =
-                button.dataset.category;
+    showToast("Your AI style profile is ready.");
 
-            $$(".category-btn").forEach(btn => {
-                btn.classList.remove("active");
-            });
+  }
 
-            button.classList.add("active");
+  catch (error) {
 
-        }
+    console.error(
+      "Style Synth AI Error:",
+      error
     );
 
-});
 
+    profile.innerHTML = `
 
-// ======================================================
-// SAVE CLOTHING
-// ======================================================
+      <div class="profile-placeholder">
 
-$("#saveClothingBtn").addEventListener(
-    "click",
-    saveClothing
-);
+        <div class="profile-symbol">!</div>
 
+        <h3>Analysis couldn't be completed</h3>
 
-function saveClothing() {
+        <p>
+          Please check your connection and try
+          again.
+        </p>
 
-    const name =
-        $("#clothingName").value.trim();
-
-    const color =
-        $("#clothingColor").value.trim();
-
-    const brand =
-        $("#clothingBrand").value.trim();
-
-    const occasion =
-        $("#clothingOccasion").value;
-
-
-    if (!name) {
-        toast("Enter the clothing name");
-        return;
-    }
-
-    if (!color) {
-        toast("Enter the colour");
-        return;
-    }
-
-
-    const item = {
-
-        id:
-            Date.now().toString() +
-            Math.random().toString(36).slice(2),
-
-        name: name,
-
-        color: color,
-
-        brand:
-            brand || "No brand",
-
-        category:
-            selectedCategory,
-
-        occasion:
-            occasion,
-
-        image:
-            selectedImage,
-
-        favorite:
-            false,
-
-        createdAt:
-            Date.now()
-
-    };
-
-
-    wardrobe.unshift(item);
-
-    saveData();
-
-    resetAddForm();
-
-    renderEverything();
-
-    openScreen("wardrobe");
-
-    toast("Added to your wardrobe ✨");
-}
-
-
-// ======================================================
-// RESET ADD FORM
-// ======================================================
-
-function resetAddForm() {
-
-    $("#clothingName").value = "";
-    $("#clothingColor").value = "";
-    $("#clothingBrand").value = "";
-
-    $("#clothingOccasion").value =
-        "College";
-
-    selectedCategory = "shirt";
-    selectedImage = "";
-
-    photoInput.value = "";
-
-
-    $$(".category-btn").forEach(button => {
-
-        button.classList.toggle(
-            "active",
-            button.dataset.category === "shirt"
-        );
-
-    });
-
-
-    previewArea.innerHTML = `
-
-        <div class="upload-placeholder">
-
-            <div class="upload-icon">＋</div>
-
-            <h3>Upload clothing photo</h3>
-
-            <p>
-                Add a clear photo of your clothing.
-            </p>
-
-            <button
-                id="choosePhotoBtn"
-                class="primary"
-                type="button"
-            >
-                Choose Photo
-            </button>
-
-        </div>
-    `;
-
-
-    $("#choosePhotoBtn")
-        .addEventListener(
-            "click",
-            () => photoInput.click()
-        );
-}
-
-
-// ======================================================
-// FILTERS
-// ======================================================
-
-$$(".tab").forEach(button => {
-
-    button.addEventListener(
-        "click",
-        () => {
-
-            selectedFilter =
-                button.dataset.filter;
-
-            $$(".tab").forEach(tab => {
-                tab.classList.remove("active");
-            });
-
-            button.classList.add("active");
-
-            renderWardrobe();
-
-        }
-    );
-
-});
-
-
-// ======================================================
-// CARD HTML
-// ======================================================
-
-function iconFor(category) {
-
-    if (category === "shirt") return "👕";
-
-    if (category === "pant") return "👖";
-
-    if (category === "accessory") return "🕶️";
-
-    return "✨";
-}
-
-
-function createCard(item) {
-
-    return `
-
-        <article
-            class="clothing-card"
-            data-id="${item.id}"
+        <button
+          class="gold-button"
+          onclick="analyzeStyle()"
+          style="margin-top:18px;"
         >
+          Try Again
+        </button>
 
-            <div class="clothing-photo">
+      </div>
 
-                ${
-                    item.image
-                    ?
-                    `<img
-                        src="${item.image}"
-                        alt="${escapeHTML(item.name)}"
-                    >`
-                    :
-                    `<span class="emoji">
-                        ${iconFor(item.category)}
-                    </span>`
-                }
-
-
-   <button
-    class="favorite ${item.favorite ? "active" : ""}"
-    type="button"
-    data-id="${item.id}"
-    onclick="event.preventDefault(); event.stopPropagation(); toggleFavorite('${item.id}'); return false;"
->
-    ${item.favorite ? "♥" : "♡"}
-</button>
-
-            </div>
-
-
-            <div class="clothing-info">
-
-                <small>
-                    ${escapeHTML(item.category)}
-                </small>
-
-                <h3>
-                    ${escapeHTML(item.name)}
-                </h3>
-
-                <p>
-                    ${escapeHTML(item.color)}
-                </p>
-
-                ${
-                    item.brand !== "No brand"
-                    ?
-                    `<p>${escapeHTML(item.brand)}</p>`
-                    :
-                    ""
-                }
-
-
-                <div class="card-actions">
-
-                    <button
-                        class="edit-btn"
-                        data-action="edit"
-                        data-id="${item.id}"
-                        type="button"
-                    >
-                        ✏️ Edit
-                    </button>
-
-
-                    <button
-                        class="delete-btn"
-                        data-action="delete"
-                        data-id="${item.id}"
-                        type="button"
-                    >
-                        🗑️ Delete
-                    </button>
-
-                </div>
-
-            </div>
-
-        </article>
     `;
-}
 
 
-// ======================================================
-// ATTACH CARD ACTIONS
-// ======================================================
-
-function attachCardActions() {
-
-    $$("[data-action]").forEach(button => {
-
-        button.addEventListener(
-            "click",
-            event => {
-
-                event.stopPropagation();
-
-                const action =
-                    button.dataset.action;
-
-                const id =
-                    button.dataset.id;
-
-
-                if (action === "favorite") {
-
-                    toggleFavorite(id);
-
-                }
-
-                if (action === "edit") {
-
-                    editItem(id);
-
-                }
-
-                if (action === "delete") {
-
-                    deleteItem(id);
-
-                }
-
-            }
-        );
-
-    });
-}
-
-
-// ======================================================
-// FAVORITES
-// ======================================================
-
-function toggleFavorite(id) {
-
-    const item =
-        wardrobe.find(
-            item => String(item.id) === String(id)
-        );
-
-    if (!item) return;
-
-
-    item.favorite =
-        item.favorite !== true;
-
-
-    // YOUR APP'S EXISTING SAVE FUNCTION
-    saveData();
-
-
-    // Refresh wardrobe, recent, favorites and counters
-    renderEverything();
-
-
-    // YOUR APP'S EXISTING TOAST FUNCTION
-    if (item.favorite === true) {
-
-        toast("❤️ Added to Liked");
-
-    } else {
-
-        toast("💔 Removed from Liked");
-
-    }
-}
-
-// ======================================================
-// DELETE
-// ======================================================
-
-function deleteItem(id) {
-
-    const item =
-        wardrobe.find(
-            clothing => clothing.id === id
-        );
-
-    if (!item) return;
-
-
-    const confirmed =
-        confirm(
-            `Delete "${item.name}" from your wardrobe?`
-        );
-
-
-    if (!confirmed) return;
-
-
-    wardrobe =
-        wardrobe.filter(
-            clothing => clothing.id !== id
-        );
-
-
-    saveData();
-
-    renderEverything();
-
-    toast("Item deleted");
-}
-
-
-// ======================================================
-// EDIT
-// ======================================================
-
-function editItem(id) {
-
-    const item =
-        wardrobe.find(
-            clothing => clothing.id === id
-        );
-
-    if (!item) return;
-
-
-    const name =
-        prompt(
-            "Clothing name:",
-            item.name
-        );
-
-    if (name === null) return;
-
-
-    const color =
-        prompt(
-            "Colour:",
-            item.color
-        );
-
-    if (color === null) return;
-
-
-    const brand =
-        prompt(
-            "Brand:",
-            item.brand
-        );
-
-    if (brand === null) return;
-
-
-    item.name =
-        name.trim() || item.name;
-
-    item.color =
-        color.trim() || item.color;
-
-    item.brand =
-        brand.trim() || "No brand";
-
-
-    saveData();
-
-    renderEverything();
-
-    toast("Clothing updated ✨");
-}
-
-
-// ======================================================
-// RENDER WARDROBE
-// ======================================================
-
-function renderWardrobe() {
-
-    const grid =
-        $("#wardrobeGrid");
-
-    if (!grid) return;
-
-
-    let items =
-        wardrobe;
-
-
-    if (selectedFilter !== "all") {
-
-        items =
-            wardrobe.filter(
-                item =>
-                    item.category === selectedFilter
-            );
-
-    }
-
-
-    if (items.length === 0) {
-
-        grid.innerHTML = `
-
-            <div class="empty-state">
-
-                <div class="empty-icon">👗</div>
-
-                <h2>No items here yet</h2>
-
-                <p>
-                    Add clothing to build your wardrobe.
-                </p>
-
-                <button
-                    id="emptyAddBtn"
-                    class="primary"
-                    type="button"
-                >
-                    + Add Clothing
-                </button>
-
-            </div>
-        `;
-
-
-        $("#emptyAddBtn")
-            .addEventListener(
-                "click",
-                () => openScreen("add")
-            );
-
-
-        return;
-    }
-
-
-    grid.innerHTML =
-        items.map(createCard).join("");
-
-
-    attachCardActions();
-}
-
-
-// ======================================================
-// RECENT
-// ======================================================
-
-function renderRecent() {
-
-    const grid =
-        $("#recentGrid");
-
-    if (!grid) return;
-
-
-    const items =
-        wardrobe.slice(0,4);
-
-
-    if (items.length === 0) {
-
-        grid.innerHTML = `
-
-            <div class="empty-state">
-
-                <div class="empty-icon">＋</div>
-
-                <h2>Your wardrobe is waiting</h2>
-
-                <p>
-                    Add your first clothing item.
-                </p>
-
-                <button
-                    id="recentAddBtn"
-                    class="primary"
-                    type="button"
-                >
-                    Add Clothing
-                </button>
-
-            </div>
-        `;
-
-
-        $("#recentAddBtn")
-            .addEventListener(
-                "click",
-                () => openScreen("add")
-            );
-
-
-        return;
-    }
-
-
-    grid.innerHTML =
-        items.map(createCard).join("");
-
-
-    attachCardActions();
-}
-
-
-// ======================================================
-// FAVORITES SCREEN
-// ======================================================
-
-function renderFavorites() {
-
-    const grid =
-        $("#favoritesGrid");
-
-    if (!grid) return;
-
-
-    const favorites =
-        wardrobe.filter(
-            item => item.favorite === true
-        );
-
-
-    if (favorites.length === 0) {
-
-        grid.innerHTML = `
-
-            <div class="empty-state">
-
-                <div class="empty-icon">♡</div>
-
-                <h2>No favorites yet</h2>
-
-                <p>
-                    Tap the heart on any clothing item.
-                </p>
-
-            </div>
-        `;
-
-        return;
-    }
-
-
-    grid.innerHTML =
-        favorites.map(createCard).join("");
-
-
-    attachCardActions();
-}
-
-
-// ======================================================
-// COUNTERS
-// ======================================================
-
-function updateCounters() {
-
-    $("#totalCount").textContent =
-        wardrobe.length;
-
-
-    $("#shirtCount").textContent =
-        wardrobe.filter(
-            item =>
-                item.category === "shirt"
-        ).length;
-
-
-    $("#pantsCount").textContent =
-        wardrobe.filter(
-            item =>
-                item.category === "pant"
-        ).length;
-
-
-    $("#favoriteCount").textContent =
-        wardrobe.filter(
-            item =>
-                item.favorite === true
-        ).length;
-}
-
-
-// ======================================================
-// OCCASION
-// ======================================================
-
-$$(".occasion").forEach(button => {
-
-    button.addEventListener(
-        "click",
-        () => {
-
-            selectedOccasion =
-                button.dataset.occasion;
-
-
-            $$(".occasion").forEach(
-                option =>
-                    option.classList.remove("active")
-            );
-
-
-            button.classList.add("active");
-
-        }
+    showToast(
+      "AI analysis failed. Please try again."
     );
 
-});
-
-
-// ======================================================
-// COLOUR ENGINE
-// ======================================================
-
-const colorMatches = {
-
-    black: [
-        "white","cream","beige","grey","gray",
-        "blue","navy","red","green","olive",
-        "brown","khaki","yellow"
-    ],
-
-    white: [
-        "black","blue","navy","grey","gray",
-        "beige","cream","brown","khaki",
-        "olive","green","red","maroon",
-        "burgundy","pink","purple","yellow",
-        "orange"
-    ],
-
-    navy: [
-        "white","cream","beige","grey","gray",
-        "blue","brown","khaki","olive","pink"
-    ],
-
-    blue: [
-        "white","cream","beige","grey","gray",
-        "black","navy","brown","khaki","olive"
-    ],
-
-    beige: [
-        "black","white","navy","blue","brown",
-        "olive","green","maroon","burgundy","rust"
-    ],
-
-    cream: [
-        "black","navy","blue","brown","olive",
-        "green","maroon","burgundy","khaki"
-    ],
-
-    grey: [
-        "black","white","navy","blue","pink",
-        "purple","red","green","olive"
-    ],
-
-    gray: [
-        "black","white","navy","blue","pink",
-        "purple","red","green","olive"
-    ],
-
-    brown: [
-        "white","cream","beige","blue","navy",
-        "green","olive","khaki"
-    ],
-
-    khaki: [
-        "white","black","navy","blue","brown",
-        "olive","green","maroon"
-    ],
-
-    olive: [
-        "white","cream","beige","black",
-        "brown","navy","blue","khaki"
-    ],
-
-    green: [
-        "white","cream","beige","black",
-        "brown","navy","blue","grey","gray"
-    ],
-
-    red: [
-        "black","white","grey","gray","navy","beige"
-    ],
-
-    maroon: [
-        "black","white","grey","gray",
-        "beige","cream","navy","khaki"
-    ],
-
-    burgundy: [
-        "black","white","grey","gray",
-        "beige","cream","navy","khaki"
-    ],
-
-    pink: [
-        "white","grey","gray","navy",
-        "black","beige","cream"
-    ],
-
-    purple: [
-        "white","grey","gray","black",
-        "beige","cream"
-    ],
-
-    yellow: [
-        "black","white","navy",
-        "grey","gray","blue"
-    ],
-
-    orange: [
-        "black","white","navy",
-        "beige","cream","brown"
-    ],
-
-    rust: [
-        "black","white","navy",
-        "beige","cream","brown"
-    ]
+  }
 
 };
 
 
-function normalizeColor(color) {
+/* =========================================
+   IMAGE → BASE64
+========================================= */
 
-    return String(color || "")
-        .toLowerCase()
-        .trim();
-}
+function fileToDataURL(file) {
 
+  return new Promise((resolve, reject) => {
 
-function getColor(color) {
+    const reader = new FileReader();
 
-    const value =
-        normalizeColor(color);
 
+    reader.onload = () => {
 
-    const names =
-        Object.keys(colorMatches);
+      resolve(reader.result);
 
-
-    for (const name of names) {
-
-        if (
-            value === name ||
-            value.includes(name)
-        ) {
-            return name;
-        }
-
-    }
-
-
-    if (value.includes("off white")) {
-        return "white";
-    }
-
-    if (value.includes("dark blue")) {
-        return "navy";
-    }
-
-    if (value.includes("light blue")) {
-        return "blue";
-    }
-
-    if (value.includes("dark green")) {
-        return "green";
-    }
-
-    return value;
-}
-
-
-function colourScore(a,b) {
-
-    const colorA =
-        getColor(a);
-
-    const colorB =
-        getColor(b);
-
-
-    if (colorA === colorB) {
-        return 65;
-    }
-
-
-    if (
-        colorMatches[colorA] &&
-        colorMatches[colorA].includes(colorB)
-    ) {
-        return 100;
-    }
-
-
-    if (
-        colorMatches[colorB] &&
-        colorMatches[colorB].includes(colorA)
-    ) {
-        return 100;
-    }
-
-
-    return 35;
-}
-
-
-// ======================================================
-// OUTFIT SCORE
-// ======================================================
-
-function outfitScore(shirt,pants) {
-
-    let score =
-        colourScore(
-            shirt.color,
-            pants.color
-        );
-
-
-    if (
-        shirt.occasion === selectedOccasion
-    ) {
-        score += 10;
-    }
-
-
-    if (
-        pants.occasion === selectedOccasion
-    ) {
-        score += 10;
-    }
-
-
-    return Math.min(
-        100,
-        Math.round(score)
-    );
-}
-
-
-// ======================================================
-// GENERATE OUTFIT
-// ======================================================
-
-$("#generateBtn").addEventListener(
-    "click",
-    generateOutfit
-);
-
-
-function generateOutfit() {
-
-    const shirts =
-        wardrobe.filter(
-            item =>
-                item.category === "shirt"
-        );
-
-
-    const pants =
-        wardrobe.filter(
-            item =>
-                item.category === "pant"
-        );
-
-
-    if (shirts.length === 0) {
-
-        toast(
-            "Add at least one shirt first 👕"
-        );
-
-        openScreen("add");
-
-        return;
-    }
-
-
-    if (pants.length === 0) {
-
-        toast(
-            "Add at least one pair of pants first 👖"
-        );
-
-        openScreen("add");
-
-        return;
-    }
-
-
-    const combinations = [];
-
-
-    shirts.forEach(shirt => {
-
-        pants.forEach(pantsItem => {
-
-            combinations.push({
-
-                shirt: shirt,
-
-                pants: pantsItem,
-
-                score:
-                    outfitScore(
-                        shirt,
-                        pantsItem
-                    )
-
-            });
-
-        });
-
-    });
-
-
-    combinations.sort(
-        (a,b) =>
-            b.score - a.score
-    );
-
-
-    let possible =
-        combinations;
-
-
-    if (lastOutfit) {
-
-        const different =
-            combinations.filter(
-                combination =>
-                    combination.shirt.id !==
-                    lastOutfit.shirt.id ||
-                    combination.pants.id !==
-                    lastOutfit.pants.id
-            );
-
-
-        if (different.length > 0) {
-            possible = different;
-        }
-
-    }
-
-
-    const best =
-        possible[
-            Math.floor(
-                Math.random() *
-                Math.min(
-                    possible.length,
-                    3
-                )
-            )
-        ];
-
-
-    lastOutfit = best;
-
-
-    renderResult(best);
-
-    openScreen("result");
-
-    toast(
-        "Your outfit is ready ✨"
-    );
-}
-
-
-// ======================================================
-// RESULT
-// ======================================================
-
-function renderResult(outfit) {
-
-    const shirt =
-        outfit.shirt;
-
-    const pants =
-        outfit.pants;
-
-
-    $("#resultArea").innerHTML = `
-
-        <div class="result-card">
-
-            <div class="result-header">
-
-                <div>
-
-                    <small class="eyebrow">
-                        ${escapeHTML(selectedOccasion)}
-                    </small>
-
-                    <h2>
-                        Your Style Synth Look
-                    </h2>
-
-                    <p>
-                        Colour-matched from your wardrobe.
-                    </p>
-
-                </div>
-
-
-                <div class="score">
-                    ${outfit.score}%
-                </div>
-
-            </div>
-
-
-            <div class="outfit">
-
-
-                <div class="outfit-piece">
-
-                    <div class="outfit-piece-image">
-
-                        ${
-                            shirt.image
-                            ?
-                            `<img
-                                src="${shirt.image}"
-                                alt="${escapeHTML(shirt.name)}"
-                            >`
-                            :
-                            `<span>👕</span>`
-                        }
-
-                    </div>
-
-                    <small>SHIRT</small>
-
-                    <h3>
-                        ${escapeHTML(shirt.name)}
-                    </h3>
-
-                    <p>
-                        ${escapeHTML(shirt.color)}
-                    </p>
-
-                </div>
-
-
-                <div class="plus">
-                    +
-                </div>
-
-
-                <div class="outfit-piece">
-
-                    <div class="outfit-piece-image">
-
-                        ${
-                            pants.image
-                            ?
-                            `<img
-                                src="${pants.image}"
-                                alt="${escapeHTML(pants.name)}"
-                            >`
-                            :
-                            `<span>👖</span>`
-                        }
-
-                    </div>
-
-                    <small>PANTS</small>
-
-                    <h3>
-                        ${escapeHTML(pants.name)}
-                    </h3>
-
-                    <p>
-                        ${escapeHTML(pants.color)}
-                    </p>
-
-                </div>
-
-
-            </div>
-
-
-            <div class="reason">
-
-                <strong>
-                    🎨 Why this combination?
-                </strong>
-
-                <p>
-                    ${escapeHTML(shirt.color)}
-                    works with
-                    ${escapeHTML(pants.color)}
-                    for a balanced
-                    ${escapeHTML(selectedOccasion.toLowerCase())}
-                    look.
-                </p>
-
-            </div>
-
-
-            <button
-                id="anotherOutfitBtn"
-                class="primary full"
-                type="button"
-            >
-                ✦ Generate Another
-            </button>
-
-        </div>
-    `;
-
-
-    $("#anotherOutfitBtn")
-        .addEventListener(
-            "click",
-            generateOutfit
-        );
-}
-
-
-// ======================================================
-// NOTIFICATION
-// ======================================================
-
-$("#notificationBtn")
-    .addEventListener(
-        "click",
-        () => {
-
-            toast(
-                wardrobe.length
-                ?
-                `You have ${wardrobe.length} items in your wardrobe.`
-                :
-                "Your wardrobe is empty."
-            );
-
-        }
-    );
-
-
-// ======================================================
-// RENDER EVERYTHING
-// ======================================================
-
-function renderEverything() {
-
-    renderWardrobe();
-
-    renderRecent();
-
-    renderFavorites();
-
-    updateCounters();
-
-}
-
-
-// ======================================================
-// START
-// ======================================================
-
-renderEverything();
-
-openScreen("home");
-window.toggleFavorite = toggleFavorite;
-/* ======================================================
-   STYLE ANALYSIS — STYLE SYNTH AI
-   Add at the VERY END of script.js
-====================================================== */
-
-(function addStyleAnalysis() {
-    const nav = document.querySelector(".sidebar nav");
-    const main = document.querySelector(".main");
-
-    if (!nav || !main || document.getElementById("style-analysis")) {
-        return;
-    }
-
-    // Add navigation button
-    const navButton = document.createElement("button");
-    navButton.className = "nav-btn";
-    navButton.dataset.screen = "style-analysis";
-    navButton.innerHTML = "<span>✧</span> Style Analysis";
-
-    const profileButton = nav.querySelector('[data-screen="profile"]');
-    if (profileButton) {
-        nav.insertBefore(navButton, profileButton);
-    } else {
-        nav.appendChild(navButton);
-    }
-
-    // Add analysis screen
-    const section = document.createElement("section");
-    section.id = "style-analysis";
-    section.className = "screen";
-
-    section.innerHTML = `
-        <div class="page-title">
-            <div>
-                <small class="eyebrow">YOUR PERSONAL STYLE REPORT</small>
-                <h1>Style Analysis</h1>
-                <p>Discover patterns and possibilities in your wardrobe.</p>
-            </div>
-            <button id="refreshStyleAnalysis" class="primary">
-                ↻ Refresh Analysis
-            </button>
-        </div>
-
-        <div id="styleAnalysisContent"></div>
-    `;
-
-    main.appendChild(section);
-
-    // Add styles without changing the existing stylesheet
-    const style = document.createElement("style");
-    style.textContent = `
-        .analysis-grid {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-        .analysis-card {
-            background: white;
-            border: 1px solid var(--border);
-            border-radius: 18px;
-            padding: 22px;
-            box-shadow: var(--shadow);
-            min-width: 0;
-        }
-        .analysis-card h3 {
-            margin: 10px 0;
-            overflow-wrap: anywhere;
-        }
-        .analysis-card p {
-            color: var(--muted);
-            line-height: 1.6;
-            font-size: 13px;
-        }
-        .analysis-number {
-            color: var(--blue-dark);
-            font-size: 30px;
-            font-weight: 700;
-        }
-        .analysis-section {
-            background: white;
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            padding: 24px;
-            margin-bottom: 20px;
-        }
-        .analysis-section h2 {
-            font-family: "Playfair Display", serif;
-            margin-bottom: 14px;
-        }
-        .analysis-row {
-            display: flex;
-            justify-content: space-between;
-            gap: 12px;
-            padding: 12px 0;
-            border-bottom: 1px solid var(--border);
-        }
-        .analysis-row:last-child { border-bottom: 0; }
-        .analysis-row span:last-child {
-            color: var(--blue-dark);
-            font-weight: 600;
-            text-align: right;
-        }
-        .analysis-tip {
-            background: var(--blue-light);
-            border-radius: 14px;
-            padding: 15px;
-            margin-top: 12px;
-            line-height: 1.6;
-        }
-        @media(max-width: 800px) {
-            .analysis-grid { grid-template-columns: 1fr; }
-        }
-    `;
-    document.head.appendChild(style);
-
-    function analyzeStyle() {
-        const content = document.getElementById("styleAnalysisContent");
-        if (!content) return;
-
-        const items = Array.isArray(wardrobe) ? wardrobe : [];
-        const shirts = items.filter(i => i.category === "shirt");
-        const pants = items.filter(i => i.category === "pant");
-        const accessories = items.filter(i => i.category === "accessory");
-        const favorites = items.filter(i => i.favorite === true);
-
-        const colorCounts = {};
-        const occasionCounts = {};
-
-        items.forEach(item => {
-            const color = String(item.color || "Unspecified").trim();
-            const occasion = String(item.occasion || "Unspecified").trim();
-
-            colorCounts[color] = (colorCounts[color] || 0) + 1;
-            occasionCounts[occasion] = (occasionCounts[occasion] || 0) + 1;
-        });
-
-        const topColor = Object.entries(colorCounts)
-            .sort((a, b) => b[1] - a[1])[0];
-
-        const topOccasion = Object.entries(occasionCounts)
-            .sort((a, b) => b[1] - a[1])[0];
-
-        const combinations = [];
-
-        shirts.forEach(shirt => {
-            pants.forEach(pant => {
-                combinations.push({
-                    shirt,
-                    pant,
-                    score: colourScore(shirt.color, pant.color)
-                });
-            });
-        });
-
-        combinations.sort((a, b) => b.score - a.score);
-
-        const best = combinations[0];
-
-        const tips = [];
-
-        if (items.length === 0) {
-            tips.push("Add your first clothing item to begin your personal style analysis.");
-        } else {
-            if (shirts.length === 0) {
-                tips.push("Add some shirts or tops to start creating complete outfits.");
-            }
-            if (pants.length === 0) {
-                tips.push("Add pants to unlock shirt-and-pants outfit combinations.");
-            }
-            if (shirts.length > 0 && pants.length > 0) {
-                tips.push("Your wardrobe contains " + combinations.length +
-                    " possible shirt-and-pants combinations.");
-            }
-            if (accessories.length === 0) {
-                tips.push("Consider adding accessories to explore more styling options.");
-            }
-            if (favorites.length > 0) {
-                tips.push("You have saved " + favorites.length +
-                    " favorite items. Use them as inspiration for future outfits.");
-            } else {
-                tips.push("Favorite the clothing pieces you enjoy wearing to build a personal shortlist.");
-            }
-            if (topColor) {
-                tips.push("Your most common recorded colour is " + topColor[0] +
-                    ". Try pairing it with a complementary neutral.");
-            }
-        }
-
-        const safe = value => escapeHTML(value);
-
-        content.innerHTML = `
-            <div class="analysis-grid">
-                <div class="analysis-card">
-                    <small class="eyebrow">TOTAL COLLECTION</small>
-                    <div class="analysis-number">${items.length}</div>
-                    <p>Clothing items recorded</p>
-                </div>
-                <div class="analysis-card">
-                    <small class="eyebrow">OUTFIT OPTIONS</small>
-                    <div class="analysis-number">${combinations.length}</div>
-                    <p>Possible shirt-and-pants combinations</p>
-                </div>
-                <div class="analysis-card">
-                    <small class="eyebrow">FAVORITES</small>
-                    <div class="analysis-number">${favorites.length}</div>
-                    <p>Items saved as favorites</p>
-                </div>
-            </div>
-
-            <div class="analysis-section">
-                <h2>Wardrobe Breakdown</h2>
-                <div class="analysis-row"><span>Shirts / Tops</span><span>${shirts.length}</span></div>
-                <div class="analysis-row"><span>Pants / Bottoms</span><span>${pants.length}</span></div>
-                <div class="analysis-row"><span>Accessories</span><span>${accessories.length}</span></div>
-                <div class="analysis-row"><span>Most recorded colour</span><span>${topColor ? safe(topColor[0]) + " (" + topColor[1] + ")" : "Not available yet"}</span></div>
-                <div class="analysis-row"><span>Most recorded occasion</span><span>${topOccasion ? safe(topOccasion[0]) + " (" + topOccasion[1] + ")" : "Not available yet"}</span></div>
-            </div>
-
-            <div class="analysis-section">
-                <h2>Colour Compatibility</h2>
-                ${
-                    best
-                    ? `<div class="analysis-tip">
-                        <strong>Suggested combination</strong><br>
-                        ${safe(best.shirt.name)} (${safe(best.shirt.color)})
-                        + ${safe(best.pant.name)} (${safe(best.pant.color)})<br>
-                        <span>Colour compatibility score: ${best.score}/100</span>
-                    </div>
-                    <p style="margin-top:12px">
-                        This score is based on the app's built-in colour matching rules,
-                        not a professional or AI-powered fashion assessment.
-                    </p>`
-                    : `<p>Add at least one shirt and one pair of pants to see a colour combination suggestion.</p>`
-                }
-            </div>
-
-            <div class="analysis-section">
-                <h2>Personal Style Insights</h2>
-                ${tips.map(tip => `<div class="analysis-tip">${safe(tip)}</div>`).join("")}
-            </div>
-        `;
-    }
-
-    // Navigation for the dynamically added screen
-    navButton.addEventListener("click", () => {
-        openScreen("style-analysis");
-        analyzeStyle();
-    });
-
-    document.getElementById("refreshStyleAnalysis")
-        .addEventListener("click", () => {
-            analyzeStyle();
-            toast("Style analysis refreshed ✨");
-        });
-
-    // Keep the report synchronized when wardrobe data changes
-    const originalRenderEverything = renderEverything;
-
-    renderEverything = function() {
-        originalRenderEverything();
-        analyzeStyle();
     };
 
-    analyzeStyle();
-})();
+
+    reader.onerror = () => {
+
+      reject(
+        new Error("Unable to read image.")
+      );
+
+    };
+
+
+    reader.readAsDataURL(file);
+
+  });
+
+}
+
+
+/* =========================================
+   RENDER AI STYLE PROFILE
+========================================= */
+
+function renderAIStyleProfile(analysis) {
+
+  const profile =
+    document.getElementById("styleProfile");
+
+
+  const faceShape =
+    analysis.face_shape || "Not clearly visible";
+
+  const skinTone =
+    analysis.skin_tone_appearance ||
+    "Not clearly determined";
+
+  const hair =
+    analysis.hair_and_hairstyle ||
+    "No specific recommendation";
+
+  const palette =
+    analysis.recommended_colors ||
+    "Neutral and coordinated colors";
+
+  const styleDirection =
+    analysis.style_direction ||
+    "Balanced personal style";
+
+  const outfit =
+    analysis.outfit_recommendations ||
+    "Choose coordinated pieces from your wardrobe";
+
+  const accessories =
+    analysis.accessories ||
+    "Minimal coordinated accessories";
+
+  const neckline =
+    analysis.neckline_and_collar ||
+    "Clean, versatile necklines";
+
+  const improvement =
+    analysis.current_outfit_improvements ||
+    "Keep the outfit coordinated and balanced";
+
+
+  profile.innerHTML = `
+
+    <p class="eyebrow">
+      AI STYLE ANALYSIS
+    </p>
+
+    <h3>
+      Your Style Profile
+    </h3>
+
+    <p style="
+      color:#98948c;
+      font-size:12px;
+      line-height:1.6;
+      margin-top:8px;
+    ">
+      Style recommendations based on the visible
+      features of your uploaded photo.
+    </p>
+
+
+    <div class="profile-results">
+
+
+      <div class="profile-result">
+
+        <label>
+          Face shape
+        </label>
+
+        <strong>
+          ${escapeHTML(faceShape)}
+        </strong>
+
+      </div>
+
+
+      <div class="profile-result">
+
+        <label>
+          Skin-tone appearance
+        </label>
+
+        <strong>
+          ${escapeHTML(skinTone)}
+        </strong>
+
+      </div>
+
+
+      <div class="profile-result">
+
+        <label>
+          Hair & hairstyle
+        </label>
+
+        <strong>
+          ${escapeHTML(hair)}
+        </strong>
+
+      </div>
+
+
+      <div class="profile-result">
+
+        <label>
+          Recommended colors
+        </label>
+
+        <strong>
+          ${escapeHTML(palette)}
+        </strong>
+
+      </div>
+
+
+      <div class="profile-result">
+
+        <label>
+          Style direction
+        </label>
+
+        <strong>
+          ${escapeHTML(styleDirection)}
+        </strong>
+
+      </div>
+
+
+      <div class="profile-result">
+
+        <label>
+          Necklines & collars
+        </label>
+
+        <strong>
+          ${escapeHTML(neckline)}
+        </strong>
+
+      </div>
+
+
+      <div class="profile-result">
+
+        <label>
+          Accessories
+        </label>
+
+        <strong>
+          ${escapeHTML(accessories)}
+        </strong>
+
+      </div>
+
+
+    </div>
+
+
+    <div style="
+      margin-top:20px;
+      padding:17px;
+      background:rgba(199,163,90,0.05);
+      border:1px solid rgba(199,163,90,0.15);
+      border-radius:13px;
+    ">
+
+      <p class="eyebrow">
+        OUTFIT RECOMMENDATIONS
+      </p>
+
+      <p style="
+        color:#98948c;
+        font-size:12px;
+        line-height:1.7;
+      ">
+        ${escapeHTML(outfit)}
+      </p>
+
+    </div>
+
+
+    <div style="
+      margin-top:15px;
+      padding:17px;
+      background:rgba(199,163,90,0.05);
+      border:1px solid rgba(199,163,90,0.15);
+      border-radius:13px;
+    ">
+
+      <p class="eyebrow">
+        ELEVATE YOUR CURRENT OUTFIT
+      </p>
+
+      <p style="
+        color:#98948c;
+        font-size:12px;
+        line-height:1.7;
+      ">
+        ${escapeHTML(improvement)}
+      </p>
+
+    </div>
+
+
+    <div style="
+      margin-top:15px;
+      padding:17px;
+      background:rgba(199,163,90,0.05);
+      border:1px solid rgba(199,163,90,0.15);
+      border-radius:13px;
+    ">
+
+      <p class="eyebrow">
+        HAIRSTYLE DIRECTION
+      </p>
+
+      <p style="
+        color:#98948c;
+        font-size:12px;
+        line-height:1.7;
+      ">
+        ${escapeHTML(hair)}
+      </p>
+
+    </div>
+
+  `;
+
+}
+
+
+/* =========================================
+   SMALL LOADING ANIMATION
+   DOES NOT CHANGE YOUR EXISTING UI
+========================================= */
+
+if (!document.getElementById("styleSynthAIAnimation")) {
+
+  const style =
+    document.createElement("style");
+
+  style.id =
+    "styleSynthAIAnimation";
+
+  style.textContent = `
+
+    @keyframes styleSynthLoading {
+
+      0% {
+        transform:translateX(-100%);
+      }
+
+      100% {
+        transform:translateX(250%);
+      }
+
+    }
+
+  `;
+
+  document.head.appendChild(style);
+
+}
